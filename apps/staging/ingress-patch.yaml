@@ -1,0 +1,12 @@
+apiVersion: helm.toolkit.fluxcd.io/v2beta1
+kind: HelmRelease
+metadata:
+  name: cloudflare-tunnel
+  namespace: network
+spec:
+  interval: 10m
+  values:
+    cloudflare:
+      ingress:
+        - hostname: k8s-${domain_prefix}.${domain_suffix}
+          service: http://capacitor.flux-system:9000

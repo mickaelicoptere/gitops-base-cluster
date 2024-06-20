@@ -1,0 +1,18 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ci-runners
+  labels:
+    toolkit.fluxcd.io/tenant: sre-team
+---
+apiVersion: actions.summerwind.dev/v1alpha1
+kind: RunnerDeployment
+metadata:
+  name: mlan-cluster-runner
+  namespace: ci-runners
+spec:
+  replicas: 1
+  template:
+    spec:
+      repository: mickaelicoptere/gitops-base-cluster

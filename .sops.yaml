@@ -1,0 +1,9 @@
+creation_rules:
+  # Rule for Kubernetes Secrets and Environment Variables
+  - path_regex: (infrastructure/secrets/.*\.yaml|secrets\.yaml)$
+    encrypted_regex: ^(env|data|stringData)$ # Adjust if needed 
+    age: age1syptj3n067ttwafr92k4fpz4djxlpr5h39stx6ut5ex2ycsh5y4qcawr25,age1hn70272w2fx9warzxjwnnsxfaa449z56nzjc6yp6y2nhc8rwf49qjsh5c2
+
+## age Public keys
+# mlan: age1syptj3n067ttwafr92k4fpz4djxlpr5h39stx6ut5ex2ycsh5y4qcawr25
+# ci: age1hn70272w2fx9warzxjwnnsxfaa449z56nzjc6yp6y2nhc8rwf49qjsh5c2

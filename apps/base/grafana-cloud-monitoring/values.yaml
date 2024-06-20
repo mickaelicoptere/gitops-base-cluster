@@ -1,0 +1,52 @@
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  interval: 24h0m0s
+  url: https://grafana.github.io/helm-charts
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: grafana-cloud-monitoring
+  namespace: monitoring
+spec:
+  interval: 30m
+  targetNamespace: monitoring
+  install:
+    createNamespace: true
+  chart:
+    spec:
+      chart: k8s-monitoring
+      version: "1.*.*"
+      sourceRef:
+        kind: HelmRepository
+        name: grafana
+        namespace: monitoring
+      interval: 12h
+  values:
+    cluster:
+      name: kind
+    externalServices:
+      prometheus:
+        hostKey: PROMETHEUS_HOST
+        basicAuth:
+          usernameKey: PROMETHEUS_USERNAME
+          passwordKey: PROMETHEUS_PASSWORD
+        secret:
+          create: false
+          name: monitoring-credentials
+          namespace: monitoring
+      loki:
+        basicAuth:
+          usernameKey: LOKI_USERNAME
+          passwordKey: LOKI_PASSWORD
+        secret:
+          create: false
+          name: monitoring-credentials
+          namespace: monitoring
+    opencost:
+      enabled: false

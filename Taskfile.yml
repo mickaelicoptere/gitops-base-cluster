@@ -1,0 +1,149 @@
+version: '3'
+
+vars:
+  CLUSTER_NAME: local-cluster
+  SECRET_PATH: "secrets/${USER}-key.txt"
+  ENVIRONMENT: "staging"
+  REPO_OWNER: "mickaelicoptere"
+
+tasks:
+
+  create-cluster:
+    desc: create a new cluster
+    cmds:
+      - |
+        echo "creating cluster" && \
+        kind create cluster --config=local-cluster.yaml
+
+  run-kind-cloud-provider:
+    desc: run kind cloud provider
+    cmds:
+      - |
+        echo "running kind cloud provider" && \
+        cloud-provider-kind &>/dev/null &
+
+  destroy-cluster:
+    desc: destroy a cluster
+    cmds:
+      - |
+        echo "destroying cluster" && \
+        kind delete cluster --name={{.CLUSTER_NAME}}
+
+  flux-bootstrap:
+    desc: flux bootstrap to sync cluster state from git
+    cmds:
+      - |
+        export SOPS_AGE_KEY_FILE=$(pwd)/{{.SECRET_PATH}} && \
+        sh .envrc && \
+        flux bootstrap gitlab \
+        --owner={{.REPO_OWNER}} \
+        --repository=cluster \
+        --branch=$(git branch --show-current) \
+        --path=clusters/{{.ENVIRONMENT}}
+
+  sops-init:
+    desc: instantiate age master key secret
+    cmds:
+      - |
+        cat {{.SECRET_PATH}} | kubectl create secret generic sops-age \
+        --namespace=flux-system \
+        --from-file=age.agekey=/dev/stdin
+  
+  sops-cluster-vars:
+    desc: instantiate cluster vars secret
+    vars:
+      cluster_vars: $(pwd)/infrastructure/secrets/cluster-vars.yaml
+    cmds:
+      - |
+        if test -f {{.cluster_vars}}; then
+          echo "File {{.cluster_vars}} already exists."
+        else
+          kubectl create secret generic cluster-vars --namespace flux-system \
+          --from-literal=cf_account_id=${cf_account_id} \
+          --from-literal=cf_tunnel_name=${cf_tunnel_name} \
+          --from-literal=cf_tunnel_id=${cf_tunnel_id} \
+          --from-literal=cluster_name=${cluster_name} \
+          --from-literal=email=${email} \
+          --from-literal=git_url=${git_url} \
+          --from-literal=letsencrypt_server=${letsencrypt_server} \
+          --from-literal=domain_prefix=${domain_prefix} \
+          --from-literal=domain_suffix=${domain_suffix} \
+          --from-literal=cf_api_key=${cf_api_key} \
+          --dry-run -o yaml > {{.cluster_vars}} && \
+          sops --encrypt --in-place {{.cluster_vars}}
+        fi
+
+  sops-github-ci-secret:
+    desc: instantiate monitoring secrets
+    vars:
+      github_runner_secret: $(pwd)/infrastructure/secrets/actions-runner-github-token.yaml
+    cmds:
+      - |
+        if test -f {{.github_runner_secret)}}; then
+          echo "File {{.github_runner_secret}} already exists."
+        else
+          kubectl create secret generic monitoring-credentials --namespace monitoring \
+          --from-literal=github_token=${github_token} \
+          --dry-run -o yaml > {{.github_runner_secret}} && \
+          sops --encrypt --in-place {{.github_runner_secret}}
+        fi
+
+  sops-monitoring-secrets:
+    desc: instantiate monitoring secrets
+    vars:
+      monitoring_credentials: $(pwd)/infrastructure/secrets/monitoring-credentials.yaml
+    cmds:
+      - |
+        if test -f {{.monitoring_credentials}}; then
+          echo "File {{.monitoring_credentials}} already exists."
+        else
+          kubectl create secret generic monitoring-credentials --namespace monitoring \
+          --from-literal=LOKI_HOST=${loki_host} \
+          --from-literal=LOKI_USERNAME=${loki_username} \
+          --from-literal=LOKI_PASSWORD=${loki_password} \
+          --from-literal=PROMETHEUS_HOST=${prometheus_host} \
+          --from-literal=PROMETHEUS_USERNAME=${prometheus_username} \
+          --from-literal=PROMETHEUS_PASSWORD=${prometheus_password} \
+          --dry-run -o yaml > {{.monitoring_credentials}} && \
+          sops --encrypt --in-place {{.monitoring_credentials}}
+        fi
+
+  sops-externaldns-cloudflare-secrets:
+    desc: instantiate external-dns cloudflare secrets
+    vars:
+      cloudflare_api_key: $(pwd)/infrastructure/secrets/cloudflare-api-key.yaml
+    cmds:
+      - |
+        if test -f {{.cloudflare_api_key}}; then
+          echo "File {{.cloudflare_api_key}} already exists."
+        else
+          kubectl create secret generic cloudflare-api-key --namespace network \
+          --from-literal=CF_API_KEY=${cf_api_key} \
+          --from-literal=email=${email} \
+          --dry-run -o yaml > {{.cloudflare_api_key}} && \
+          sops --encrypt --in-place {{.cloudflare_api_key}}
+        fi
+
+  apply-infra:
+    desc: instantiate flux kustomizations
+    cmds:
+      - |
+        echo "applying infra" && \
+        kubectl apply -k clusters/{{.ENVIRONMENT}}
+
+  bootstrap:
+    desc: bootstrap cluster
+    cmds:
+    - task: create-cluster
+    - task: run-kind-cloud-provider
+    - task: flux-bootstrap
+    - task: sops-init
+    - task: sops-cluster-vars
+    - task: sops-monitoring-secrets
+    - task: sops-externaldns-cloudflare-secrets
+    - task: apply-infra
+
+  destroy:
+    desc: destroy cluster
+    cmds:
+    - task: destroy-cluster
